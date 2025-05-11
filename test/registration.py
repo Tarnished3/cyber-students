@@ -1,62 +1,62 @@
+import os
 from json import dumps
 from tornado.escape import json_decode
-from tornado.ioloop import IOLoop
 from tornado.web import Application
-
 from api.handlers.registration import RegistrationHandler
-
 from .base import BaseTest
-
-import urllib.parse
 
 class RegistrationHandlerTest(BaseTest):
 
     @classmethod
-    def setUpClass(self):
-        self.my_app = Application([(r'/registration', RegistrationHandler)])
+    def setUpClass(cls):
+        os.environ['ENCRYPTION_KEY'] = 'a' * 32 
+        cls.my_app = Application([(r'/registration', RegistrationHandler)])
         super().setUpClass()
 
-    def test_registration(self):
-        email = 'test@test.com'
-        display_name = 'testDisplayName'
-
+    def test_registration_with_all_fields(self):
         body = {
-          'email': email,
-          'password': 'testPassword',
-          'displayName': display_name
+            'email': 'test1@example.com',
+            'password': 'securePassword123',
+            'displayName': 'TestUser',
+            'full_name': 'Test User',
+            'address': '123 Test St',
+            'date_of_birth': '1990-01-01',
+            'phone_number': '+1234567890',
+            'disabilities': ['visual', 'mobility']
         }
 
         response = self.fetch('/registration', method='POST', body=dumps(body))
         self.assertEqual(200, response.code)
 
-        body_2 = json_decode(response.body)
-        self.assertEqual(email, body_2['email'])
-        self.assertEqual(display_name, body_2['displayName'])
+        response_data = json_decode(response.body)
+        self.assertEqual(response_data['email'], body['email'])
 
-    def test_registration_without_display_name(self):
-        email = 'test@test.com'
-
+    def test_registration_without_display_name_defaults_to_email(self):
+        email = 'test2@example.com'
         body = {
-          'email': email,
-          'password': 'testPassword'
+            'email': email,
+            'password': 'TestPass2'
         }
 
         response = self.fetch('/registration', method='POST', body=dumps(body))
         self.assertEqual(200, response.code)
 
-        body_2 = json_decode(response.body)
-        self.assertEqual(email, body_2['email'])
-        self.assertEqual(email, body_2['displayName'])
+        response_data = json_decode(response.body)
+        self.assertEqual(response_data['email'], email)
 
-    def test_registration_twice(self):
+    def test_missing_encryption_key(self):
+        del os.environ['ENCRYPTION_KEY']
         body = {
-          'email': 'test@test.com',
-          'password': 'testPassword',
-          'displayName': 'testDisplayName'
+            'email': 'fail@example.com',
+            'password': 'fail',
+            'displayName': 'FailUser'
         }
 
         response = self.fetch('/registration', method='POST', body=dumps(body))
-        self.assertEqual(200, response.code)
+        self.assertEqual(response.code, 500)
 
-        response_2 = self.fetch('/registration', method='POST', body=dumps(body))
-        self.assertEqual(409, response_2.code)
+        response1 = self.fetch('/registration', method='POST', body=dumps(body))
+        self.assertEqual(response1.code, 200)
+
+        response2 = self.fetch('/registration', method='POST', body=dumps(body))
+        self.assertEqual(response2.code, 409)

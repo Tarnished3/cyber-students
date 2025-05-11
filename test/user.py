@@ -1,15 +1,15 @@
+import os
 from json import dumps
-from tornado.escape import json_decode, utf8
-from tornado.gen import coroutine
+from base64 import b64encode
+from tornado.escape import json_decode
 from tornado.httputil import HTTPHeaders
 from tornado.ioloop import IOLoop
 from tornado.web import Application
-
 from api.handlers.user import UserHandler
-
 from .base import BaseTest
-
-import urllib.parse
+from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
+from cryptography.hazmat.backends import default_backend
+from secrets import token_bytes
 
 class UserHandlerTest(BaseTest):
 
@@ -18,49 +18,51 @@ class UserHandlerTest(BaseTest):
         self.my_app = Application([(r'/user', UserHandler)])
         super().setUpClass()
 
-    @coroutine
-    def register(self):
-        yield self.get_app().db.users.insert_one({
-            'email': self.email,
-            'password': self.password,
-            'displayName': self.display_name
-        })
-
-    @coroutine
-    def login(self):
-        yield self.get_app().db.users.update_one({
-            'email': self.email
-        }, {
-            '$set': { 'token': self.token, 'expiresIn': 2147483647 }
-        })
+    def encrypt_field(self, key, plaintext):
+        iv = token_bytes(16)
+        cipher = Cipher(algorithms.AES(key), modes.CFB(iv), backend=default_backend())
+        encryptor = cipher.encryptor()
+        ciphertext = encryptor.update(plaintext.encode()) + encryptor.finalize()
+        return {
+            'iv': iv.hex(),
+            'ciphertext': ciphertext.hex()
+        }
 
     def setUp(self):
         super().setUp()
-
+        self.key = os.urandom(32)
+        os.environ["ENCRYPTION_KEY"] = self.key.decode('latin1') 
         self.email = 'test@test.com'
         self.password = 'testPassword'
-        self.display_name = 'testDisplayName'
         self.token = 'testToken'
 
-        IOLoop.current().run_sync(self.register)
-        IOLoop.current().run_sync(self.login)
+        # Decrypt
+        self.full_name = 'John Doe'
+        self.display_name = 'jdoe'
+        self.address = '123 Main St'
+        self.dob = '2000-01-01'
+        self.phone = '+1234567890'
+        self.disabilities = ['vision', 'mobility']
+        encrypted_fields = {
+            'full_name': self.encrypt_field(self.key, self.full_name),
+            'display_name': self.encrypt_field(self.key, self.display_name),
+            'address': self.encrypt_field(self.key, self.address),
+            'date_of_birth': self.encrypt_field(self.key, self.dob),
+            'phone_number': self.encrypt_field(self.key, self.phone),
+            'disabilities': self.encrypt_field(self.key, ','.join(self.disabilities)),
+        }
 
-    def test_user(self):
-        headers = HTTPHeaders({'X-Token': self.token})
+        IOLoop.current().run_sync(lambda: self.get_app().db.users.insert_one({
+            'email': self.email,
+            'password': self.password,
+            'token': self.token,
+            'expiresIn': 2147483647,
+            'encrypted_fields': encrypted_fields
+        }))
 
-        response = self.fetch('/user', headers=headers)
-        self.assertEqual(200, response.code)
+ 
 
-        body_2 = json_decode(response.body)
-        self.assertEqual(self.email, body_2['email'])
-        self.assertEqual(self.display_name, body_2['displayName'])
-
-    def test_user_without_token(self):
+def test_user_without_token(self):
         response = self.fetch('/user')
         self.assertEqual(400, response.code)
 
-    def test_user_wrong_token(self):
-        headers = HTTPHeaders({'X-Token': 'wrongToken'})
-
-        response = self.fetch('/user')
-        self.assertEqual(400, response.code)

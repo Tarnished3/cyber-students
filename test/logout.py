@@ -23,7 +23,12 @@ class LogoutHandlerTest(BaseTest):
         yield self.get_app().db.users.insert_one({
             'email': self.email,
             'password': self.password,
-            'displayName': 'testDisplayName'
+            'displayName': self.display_name,
+            'fullName': self.fullName,
+            'address': self.address,
+            'dateOfBirth': self.dateOfBirth,
+            'phoneNumber': self.phoneNumber,
+            'disabilities': self.disabilities
         })
 
     @coroutine

@@ -52,7 +52,13 @@ class LoginHandler(BaseHandler):
         user = yield self.db.users.find_one({
           'email': email
         }, {
-          'password': 1
+            'password': 1,
+            'displayName': 1,
+            'fullName': 1,
+            'address': 1,
+            'dateOfBirth': 1,
+            'phoneNumber': 1,
+            'disabilities': 1
         })
 
         if user is None:
